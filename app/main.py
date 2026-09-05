@@ -9,18 +9,18 @@ REDIS_KEY = "banned_ranges"
 
 def ip_to_int(ip: str) -> int:
     """
-    192.168.1.50 -> entier 32 bits
+    192.168.1.50 -> 32-bit integer
     """
     return int(ipaddress.IPv4Address(ip))
 
 
 def parse_target(target: str):
     """
-    Accepte :
+    Accepts:
       192.168.1.50
       192.168.1.0/24
 
-    Retourne :
+    Returns:
       start_int, end_int, label
     """
 
@@ -44,7 +44,7 @@ def ban(target: str):
     member = f"{start}:{label}"
 
     # ZADD banned_ranges END "START:LABEL"
-    r.execute_command("ZADD", REDIS_KEY, end, member)
+    r.zadd(REDIS_KEY, {member: end})
 
     print(f"[BAN] {label}")
     print(f"      start = {start}")
@@ -55,7 +55,7 @@ def is_banned(ip: str):
     ip_int = ip_to_int(ip)
 
     # ZRANGE banned_ranges IP +inf BYSCORE
-    candidates = r.execute_command("ZRANGE", REDIS_KEY, ip_int, "+inf", "BYSCORE")
+    candidates = r.zrange(REDIS_KEY, ip_int, "+inf", byscore=True)
 
     for member in candidates:
         start_str, label = member.split(":", 1)
@@ -68,26 +68,22 @@ def is_banned(ip: str):
 
 
 def list_bans():
-    results = r.execute_command("ZRANGE", REDIS_KEY, 0, -1, "WITHSCORES")
+    results = r.zrange(REDIS_KEY, 0, -1, withscores=True)
 
     if not results:
-        print("Aucune IP bannie.")
+        print("No banned IPs.")
         return
 
     print("\n--- BANS ---")
 
-    for i in range(0, len(results), 2):
-        member = results[i]
-        end = int(float(results[i + 1]))
-
+    for member, end in results:
         start_str, label = member.split(":", 1)
-
-        print(f"{label:20} start={start_str} end={end}")
+        print(f"{label:20} start={start_str} end={int(end)}")
 
 
 def main():
     print("""
-Commandes :
+Commands:
 
   ban 192.168.1.50
   ban 192.168.1.0/24
@@ -118,21 +114,21 @@ Commandes :
                 banned, label = is_banned(parts[1])
 
                 if banned:
-                    print(f"🚫 {parts[1]} est bannie par {label}")
+                    print(f"🚫 {parts[1]} is banned by {label}")
                 else:
-                    print(f"✅ {parts[1]} n'est pas bannie")
+                    print(f"✅ {parts[1]} is not banned")
 
             elif parts[0] == "list":
                 list_bans()
 
             else:
-                print("Commande inconnue.")
+                print("Unknown command.")
 
         except ValueError as e:
-            print(f"IP invalide : {e}")
+            print(f"Invalid IP: {e}")
 
         except redis.RedisError as e:
-            print(f"Erreur Redis : {e}")
+            print(f"Redis error: {e}")
 
 
 if __name__ == "__main__":
